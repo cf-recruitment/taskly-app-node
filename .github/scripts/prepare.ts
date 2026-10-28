@@ -19,12 +19,22 @@ const NUMERIC_VARS: readonly string[] = ['TEST_AGENT_MAX_TURNS', 'TEST_AGENT_TIM
 const MAINTAINER_ROLES = ['admin', 'maintain'];
 
 export type Hunk = { start: number; count: number };
-export type Candidate = { path: string; package: Pkg; status: 'added' | 'modified'; hunks: Hunk[] };
+export type CandidateStatus = 'added' | 'modified';
+export type FileStatus = CandidateStatus | 'deleted';
+export type DiffFile = { path: string; status: FileStatus; hunks: Hunk[] };
+export type Candidate = { path: string; package: Pkg; status: CandidateStatus; hunks: Hunk[] };
 export type Skipped = { path: string; reason: SkipReason };
+export type Budgets = {
+  model: string;
+  reviewerModel: string;
+  maxTurns: number;
+  timeoutMinutes: number;
+  maxAttempts: number;
+};
 export type Scope = {
   base: string;
   head: string;
-  budgets: Record<'model' | 'reviewerModel' | 'maxTurns' | 'timeoutMinutes' | 'maxAttempts', string | number>;
+  budgets: Budgets;
   candidates: Candidate[];
   skipped: Skipped[];
 };
@@ -34,7 +44,7 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function readBudgets(): Scope['budgets'] {
+function readBudgets(): Budgets {
   const problems: string[] = [];
   const value = (name: string) => (process.env[name] ?? '').trim();
   for (const name of BUDGET_VARS) {
@@ -55,8 +65,8 @@ function readBudgets(): Scope['budgets'] {
   };
 }
 
-export function parseDiff(diff: string): { path: string; status: 'added' | 'modified' | 'deleted'; hunks: Hunk[] }[] {
-  const files: ReturnType<typeof parseDiff> = [];
+export function parseDiff(diff: string): DiffFile[] {
+  const files: DiffFile[] = [];
   for (const line of diff.split('\n')) {
     const header = /^diff --git a\/.+ b\/(.+)$/.exec(line);
     if (header) files.push({ path: header[1], status: 'modified', hunks: [] });
@@ -70,7 +80,7 @@ export function parseDiff(diff: string): { path: string; status: 'added' | 'modi
   return files;
 }
 
-function buildScope(base: string, head: string, budgets: Scope['budgets']): Scope {
+function buildScope(base: string, head: string, budgets: Budgets): Scope {
   const diff = execFileSync('git', ['diff', '-U0', '--no-color', '--no-renames', `${base}...${head}`], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,

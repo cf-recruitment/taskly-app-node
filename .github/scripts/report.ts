@@ -10,6 +10,9 @@ import type { Scope } from './prepare.ts';
 import type { Checked, Review, Verdicts } from './verdicts.ts';
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
+type Job = 'prepare' | 'engineer' | 'commit' | 'verify';
+export type StatusState = 'success' | 'failure';
+export type Status = { state: StatusState; description: string };
 export type Context = {
   pr: number;
   analyzed_sha: string;
@@ -19,15 +22,19 @@ export type Context = {
   label_skip: boolean;
   label_actor: string;
   run_agent: boolean;
-  jobs: Record<'prepare' | 'engineer' | 'commit' | 'verify', Result>;
+  jobs: Record<Job, Result>;
 };
 type Check = 'pass' | 'fail' | 'skipped';
-type Coverage = Record<string, Record<string, { lines: number; branches: number }>>;
+type CoverageFigures = { lines: number; branches: number };
+type Coverage = Record<string, Record<string, CoverageFigures>>;
+type SuiteResult = { status: Check; passed: number; failed: number };
+type Mutant = { file: string; line: number; mutator: string };
+type MutationResult = { score: number; survived: Mutant[] };
 export type Results = {
   typecheck: Record<string, Check>;
-  tests: Record<string, { status: Check; passed: number; failed: number }>;
+  tests: Record<string, SuiteResult>;
   coverage: { baseline: Coverage; final: Coverage };
-  mutation: Record<string, { score: number; survived: { file: string; line: number; mutator: string }[] } | null>;
+  mutation: Record<string, MutationResult | null>;
 };
 export type Inputs = {
   ctx: Context;
@@ -71,7 +78,7 @@ function confirmedDefects(i: Inputs) {
   return (i.verdicts?.units ?? []).filter((u) => u.verdict === 'flagged-defect' && confirmed.has(u.unit));
 }
 
-export function decide(i: Inputs): { state: 'success' | 'failure'; description: string } {
+export function decide(i: Inputs): Status {
   const { ctx } = i;
   const reasons: string[] = [];
   if (ctx.jobs.prepare !== 'success') reasons.push('prepare failed');

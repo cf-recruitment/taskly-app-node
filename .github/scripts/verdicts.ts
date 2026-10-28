@@ -64,23 +64,29 @@ export function validate(value: unknown, schema: Schema, at = '$'): string[] {
 
 // ---- Agent output types ----
 
+export type Verdict = 'added' | 'amended' | 'not-needed' | 'flagged-defect';
+export type Kind = 'intent' | 'characterization';
+export type Severity = 'blocking' | 'advisory';
+export type DefectDecision = 'confirmed' | 'rejected';
+
+export type Expectation = { text: string; source: string };
+export type Defect = { test: string; expected: string; received: string; source: string };
 export type Unit = {
   path: string;
   unit: string;
-  verdict: 'added' | 'amended' | 'not-needed' | 'flagged-defect';
+  verdict: Verdict;
   reason?: string;
-  kind?: 'intent' | 'characterization';
-  expectations: { text: string; source: string }[];
+  kind?: Kind;
+  expectations: Expectation[];
   tests: string[];
   attempts: number;
-  defect?: { test: string; expected: string; received: string; source: string };
+  defect?: Defect;
 };
 export type Verdicts = { summary: string; units: Unit[] };
-export type Review = {
-  summary: string;
-  findings: { test: string; severity: 'blocking' | 'advisory'; reason: string; note: string }[];
-  defects: { unit: string; decision: 'confirmed' | 'rejected'; source_quote: string }[];
-};
+
+export type Finding = { test: string; severity: Severity; reason: string; note: string };
+export type DefectReview = { unit: string; decision: DefectDecision; source_quote: string };
+export type Review = { summary: string; findings: Finding[]; defects: DefectReview[] };
 export type Checked = {
   ok: boolean;
   errors: string[];
@@ -90,7 +96,6 @@ export type Checked = {
 
 // ---- Rules the schema can't express ----
 
-type Verdict = Unit['verdict'];
 type VerdictRule = {
   requires: readonly (keyof Unit)[]; // fields the schema marks optional but this verdict needs
   writesTests: boolean; // must list at least one test

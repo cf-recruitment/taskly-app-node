@@ -1,8 +1,8 @@
 // Single declarative rule set: where tests live, which changed files are skipped and why.
 // Docs link here instead of copying these lists.
 
-export const PACKAGES = ['backend', 'frontend'] as const;
-export type Pkg = (typeof PACKAGES)[number];
+export type Pkg = 'backend' | 'frontend';
+export const PACKAGES: readonly Pkg[] = ['backend', 'frontend'];
 
 export const SKIP_LABEL = 'skip-test-agent';
 export const STATUS_CONTEXT = 'test-agent/verify';
@@ -20,22 +20,22 @@ export const SOURCE_PATHS: Record<Pkg, readonly string[]> = {
   frontend: ['frontend/src/**/*.ts', 'frontend/src/**/*.tsx'],
 };
 
-export const SKIP_REASONS = [
-  'tests',
-  'stories',
-  'generated',
-  'lockfiles',
-  'docs',
-  'config',
-  'type-only',
-  'barrel',
-  'deleted',
-  'not-source',
-] as const;
-export type SkipReason = (typeof SKIP_REASONS)[number];
+export type SkipReason =
+  | 'tests'
+  | 'stories'
+  | 'generated'
+  | 'lockfiles'
+  | 'docs'
+  | 'config'
+  | 'type-only'
+  | 'barrel'
+  | 'deleted'
+  | 'not-source';
+
+export type SkipRule = { reason: SkipReason; patterns: readonly string[] };
 
 // First match wins. `tests` is derived from TEST_PATHS and checked before this list.
-export const SKIP_RULES: readonly { reason: SkipReason; patterns: readonly string[] }[] = [
+export const SKIP_RULES: readonly SkipRule[] = [
   { reason: 'stories', patterns: ['**/*.stories.tsx', '**/*.stories.ts'] },
   { reason: 'generated', patterns: ['backend/src/generated/**'] },
   { reason: 'lockfiles', patterns: ['**/package-lock.json', '**/*.lock'] },
