@@ -1,5 +1,6 @@
 // prepare job: validate budget variables, read the live PR, decide label skip, write scope.json.
 // Usage: node prepare.ts [--out scope.json]
+//        node prepare.ts --local <base> [--out scope.json]   scope for `git diff <base>...HEAD`, no GitHub calls
 // Env: the 5 TEST_AGENT_* variables, GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, GITHUB_EVENT_NAME,
 //      EVENT_ACTION and EVENT_LABEL (label events only), TEST_AGENT_SKIP_ACTORS (optional fallback).
 import { execFileSync } from 'node:child_process';
@@ -176,6 +177,22 @@ async function stopForLabelEvent(gh: GitHub, repo: string, head: string, event: 
 
 // ---- Main ----
 
+function revParse(ref: string): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { encoding: 'utf8' }).trim();
+  } catch {
+    return die(SCRIPT, `unknown git ref "${ref}"`, 'usage');
+  }
+}
+
+// Local trial run: same budgets and rules as CI, but no PR, label or status logic.
+function local(base: string, out: string, env: Env) {
+  const budgets = readBudgets(env);
+  const scope = buildScope(revParse(base), revParse('HEAD'), budgets);
+  writeFileSync(out, JSON.stringify(scope, null, 2) + '\n');
+  console.log(`${SCRIPT}: ${scope.candidates.length} candidates, ${scope.skipped.length} skipped → ${out}`);
+}
+
 function writeOutputs(outputFile: string | undefined, outputs: Record<string, string | boolean>) {
   const lines = Object.entries(outputs).map(([key, value]) => `${key}=${value}`);
   if (outputFile) appendFileSync(outputFile, lines.join('\n') + '\n');
@@ -183,7 +200,8 @@ function writeOutputs(outputFile: string | undefined, outputs: Record<string, st
 }
 
 async function main(env: Env) {
-  const { values } = parseArgs({ options: { out: { type: 'string', default: 'scope.json' } } });
+  const { values } = parseArgs({ options: { out: { type: 'string', default: 'scope.json' }, local: { type: 'string' } } });
+  if (values.local !== undefined) return local(values.local, values.out, env);
   const read = (name: string) => (env[name] ?? '').trim();
   const budgets = readBudgets(env);
   const repo = read('GITHUB_REPOSITORY') || die(SCRIPT, 'GITHUB_REPOSITORY is not set');

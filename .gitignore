@@ -21,3 +21,6 @@ coverage/
 
 # macOS
 .DS_Store
+
+# Local pipeline runs (Makefile)
+.test-agent/
