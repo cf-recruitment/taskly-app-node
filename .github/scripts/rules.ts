@@ -55,7 +55,6 @@ export const SKIP_RULES: readonly SkipRule[] = [
       'backend/prisma/**',
       'frontend/.storybook/**',
       'frontend/index.html',
-      'frontend/vite.config.ts',
     ],
   },
   { reason: 'type-only', patterns: ['**/types.ts', '**/*.types.ts', '**/*.d.ts'] },

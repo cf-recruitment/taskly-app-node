@@ -15,6 +15,8 @@ package="${2:-}"
 }
 shift 2
 
+# Mount the repo root wherever the script is called from.
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cache="${SANDBOX_NPM_CACHE:-${HOME:?HOME is not set}/.cache/test-agent-npm}"
 mkdir -p "$cache"
 
@@ -30,6 +32,6 @@ exec docker run --rm \
   --user "$(id -u):$(id -g)" \
   --network="$network" \
   -e HOME=/tmp -e npm_config_cache=/npm-cache -e CI=true \
-  -v "$PWD":/w -v "$cache":/npm-cache \
+  -v "$root":/w -v "$cache":/npm-cache \
   -w "/w/$package" \
   "$IMAGE" "${cmd[@]}"

@@ -1,8 +1,9 @@
 // Validates both agents' output against their schemas and computes which test files to drop.
-// Usage: node verdicts.ts <verdicts.json> [--review review.json] [--max-attempts N] [--out checked.json]
+// Usage: node agent-output.ts <author.json> [--reviewer reviewer.json] [--max-attempts N] [--out checked.json]
 // Exit 1 if anything is invalid; --out is written either way so `publish` can read it.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { die, EXIT_CODES } from './cli.ts';
 
 // ---- Schema validation (the subset our schemas use) ----
 
@@ -19,8 +20,8 @@ type Schema = {
 type Validator = (value: unknown, schema: Schema, at: string) => string[];
 
 const readSchema = (name: string): Schema => JSON.parse(readFileSync(new URL(name, import.meta.url), 'utf8'));
-export const verdictsSchema = readSchema('./verdicts.schema.json');
-export const reviewSchema = readSchema('./review.schema.json');
+const authorSchema = readSchema('./author.schema.json');
+const reviewerSchema = readSchema('./reviewer.schema.json');
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -58,7 +59,7 @@ const validators: Record<SchemaType, Validator> = {
   boolean: (value, _schema, at) => (typeof value === 'boolean' ? [] : [`${at}: expected boolean`]),
 };
 
-export function validate(value: unknown, schema: Schema, at = '$'): string[] {
+function validate(value: unknown, schema: Schema, at = '$'): string[] {
   return validators[schema.type](value, schema, at);
 }
 
@@ -82,16 +83,16 @@ export type Unit = {
   attempts: number;
   defect?: Defect;
 };
-export type Verdicts = { summary: string; units: Unit[] };
+export type AuthorOutput = { summary: string; units: Unit[] };
 
 export type Finding = { test: string; severity: Severity; reason: string; note: string };
-export type DefectReview = { unit: string; decision: DefectDecision; source_quote: string };
-export type Review = { summary: string; findings: Finding[]; defects: DefectReview[] };
+export type DefectReview = { path: string; unit: string; decision: DefectDecision; source_quote: string };
+export type ReviewerOutput = { summary: string; findings: Finding[]; defects: DefectReview[] };
 export type Checked = {
   ok: boolean;
   errors: string[];
   dropFiles: string[]; // test files with a blocking finding
-  reviewRejected: string[]; // units whose tests live in a dropped file (report-only state)
+  reviewRejected: string[]; // unitKey of units whose tests live in a dropped file (report-only state)
 };
 
 // ---- Rules the schema can't express ----
@@ -111,6 +112,11 @@ const verdictRules: Record<Verdict, VerdictRule> = {
 
 const testFile = (test: string) => test.split(' > ')[0];
 
+export const writesTests = (verdict: Verdict) => verdictRules[verdict].writesTests;
+
+// Unit names repeat across files (`initialize`, `default`), so a unit is identified by path and name together.
+export const unitKey = (unit: { path: string; unit: string }) => `${unit.path}#${unit.unit}`;
+
 function checkUnit(unit: Unit, maxAttempts: number): string[] {
   const name = `${unit.path} ${unit.unit}`;
   const rule = verdictRules[unit.verdict];
@@ -120,92 +126,96 @@ function checkUnit(unit: Unit, maxAttempts: number): string[] {
   return errors;
 }
 
-function checkFindings(units: Unit[], review: Review): string[] {
+function checkDuplicates(units: Unit[]): string[] {
+  const keys = units.map(unitKey);
+  const repeated = new Set(keys.filter((key, index) => keys.indexOf(key) !== index));
+  return [...repeated].map((key) => `unit "${key}" is listed more than once`);
+}
+
+function checkFindings(units: Unit[], review: ReviewerOutput): string[] {
   const known = new Set(units.flatMap((u) => u.tests));
   return review.findings.filter((f) => !known.has(f.test)).map((f) => `finding refers to unknown test "${f.test}"`);
 }
 
-function checkDefectDecisions(units: Unit[], review: Review): string[] {
-  const flagged = new Set(units.filter((u) => u.verdict === 'flagged-defect').map((u) => u.unit));
-  const decided = new Set(review.defects.map((d) => d.unit));
-  const extra = [...decided].filter((unit) => !flagged.has(unit)).map((unit) => `review decides on "${unit}", which is not a flagged-defect`);
-  const undecided = [...flagged].filter((unit) => !decided.has(unit)).map((unit) => `flagged-defect "${unit}" has no reviewer decision`);
+function checkDefectDecisions(units: Unit[], review: ReviewerOutput): string[] {
+  const flagged = new Set(units.filter((u) => u.verdict === 'flagged-defect').map(unitKey));
+  const decided = new Set(review.defects.map(unitKey));
+  const extra = [...decided].filter((key) => !flagged.has(key)).map((key) => `reviewer decides on "${key}", which is not a flagged-defect`);
+  const undecided = [...flagged].filter((key) => !decided.has(key)).map((key) => `flagged-defect "${key}" has no reviewer decision`);
   return [...extra, ...undecided];
 }
 
-function blockingFiles(review: Review | undefined): Set<string> {
+function blockingFiles(review: ReviewerOutput | undefined): Set<string> {
   const blocking = (review?.findings ?? []).filter((f) => f.severity === 'blocking');
   return new Set(blocking.map((f) => testFile(f.test)));
 }
 
 const invalid = (errors: string[]): Checked => ({ ok: false, errors, dropFiles: [], reviewRejected: [] });
 
-export function check(verdicts: unknown, review: unknown | undefined, maxAttempts: number): Checked {
+function check(author: unknown, reviewer: unknown | undefined, maxAttempts: number): Checked {
   const schemaErrors = [
-    ...validate(verdicts, verdictsSchema),
-    ...(review === undefined ? [] : validate(review, reviewSchema).map((e) => `review ${e}`)),
+    ...validate(author, authorSchema).map((e) => `author ${e}`),
+    ...(reviewer === undefined ? [] : validate(reviewer, reviewerSchema).map((e) => `reviewer ${e}`)),
   ];
   if (schemaErrors.length) return invalid(schemaErrors);
 
-  const { units } = verdicts as Verdicts;
-  const typedReview = review as Review | undefined;
+  const { units } = author as AuthorOutput;
+  const review = reviewer as ReviewerOutput | undefined;
   const reviewRequired = units.some((u) => verdictRules[u.verdict].needsReview);
 
   const errors = [
+    ...checkDuplicates(units),
     ...units.flatMap((unit) => checkUnit(unit, maxAttempts)),
-    ...(reviewRequired && !typedReview ? ['review.json is missing but the author produced tests or defects'] : []),
-    ...(typedReview ? [...checkFindings(units, typedReview), ...checkDefectDecisions(units, typedReview)] : []),
+    ...(reviewRequired && !review ? ['reviewer.json is missing but the author produced tests or defects'] : []),
+    ...(review ? [...checkFindings(units, review), ...checkDefectDecisions(units, review)] : []),
   ];
   if (errors.length) return invalid(errors);
 
-  const dropFiles = blockingFiles(typedReview);
+  const dropFiles = blockingFiles(review);
   const reviewRejected = units
-    .filter((u) => verdictRules[u.verdict].writesTests && u.tests.some((t) => dropFiles.has(testFile(t))))
-    .map((u) => u.unit);
+    .filter((u) => writesTests(u.verdict) && u.tests.some((t) => dropFiles.has(testFile(t))))
+    .map(unitKey);
   return { ok: true, errors: [], dropFiles: [...dropFiles], reviewRejected };
 }
 
 // ---- CLI ----
 
-type Loaded = { value: unknown } | { error: string };
+const SCRIPT = 'agent-output';
 
-function loadJson(path: string): Loaded {
+function readJson(path: string): unknown {
   try {
-    return { value: JSON.parse(readFileSync(path, 'utf8')) };
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch (error) {
-    return { error: `cannot read ${path}: ${(error as Error).message}` };
+    throw new Error(`cannot read ${path}: ${(error as Error).message}`);
   }
 }
 
-function fail(message: string): never {
-  console.error(`verdicts: ${message}`);
-  process.exit(64);
+function checkFiles(authorFile: string, reviewerFile: string | undefined, maxAttempts: number): Checked {
+  try {
+    return check(readJson(authorFile), reviewerFile ? readJson(reviewerFile) : undefined, maxAttempts);
+  } catch (error) {
+    return invalid([(error as Error).message]);
+  }
 }
 
 function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { review: { type: 'string' }, 'max-attempts': { type: 'string' }, out: { type: 'string' } },
+    options: { reviewer: { type: 'string' }, 'max-attempts': { type: 'string' }, out: { type: 'string' } },
   });
   const [file] = positionals;
-  if (!file) fail('usage: verdicts.ts <verdicts.json> [--review review.json] [--max-attempts N] [--out checked.json]');
+  if (!file) die(SCRIPT, 'usage: agent-output.ts <author.json> [--reviewer reviewer.json] [--max-attempts N] [--out checked.json]', 'usage');
 
   const maxAttempts = Number(values['max-attempts'] ?? process.env.TEST_AGENT_MAX_ATTEMPTS);
-  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) fail('pass --max-attempts N or set TEST_AGENT_MAX_ATTEMPTS');
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) die(SCRIPT, 'pass --max-attempts N or set TEST_AGENT_MAX_ATTEMPTS', 'usage');
 
-  const verdicts = loadJson(file);
-  const review = values.review ? loadJson(values.review) : undefined;
-  const unreadable = [verdicts, review].flatMap((loaded) => (loaded && 'error' in loaded ? [loaded.error] : []));
-  const result =
-    unreadable.length > 0
-      ? invalid(unreadable)
-      : check((verdicts as { value: unknown }).value, review && (review as { value: unknown }).value, maxAttempts);
+  const result = checkFiles(file, values.reviewer, maxAttempts);
 
   if (values.out) writeFileSync(values.out, JSON.stringify(result, null, 2) + '\n');
-  for (const error of result.errors) console.error(`verdicts: ${error}`);
+  for (const error of result.errors) console.error(`${SCRIPT}: ${error}`);
   const list = (items: string[]) => items.join(', ') || 'none';
-  console.log(`verdicts: ${result.ok ? 'ok' : 'INVALID'}; drop files: ${list(result.dropFiles)}; review-rejected: ${list(result.reviewRejected)}`);
-  process.exit(result.ok ? 0 : 1);
+  console.log(`${SCRIPT}: ${result.ok ? 'ok' : 'INVALID'}; drop files: ${list(result.dropFiles)}; review-rejected: ${list(result.reviewRejected)}`);
+  process.exit(result.ok ? 0 : EXIT_CODES.failed);
 }
 
 if (import.meta.main) main();

@@ -26,8 +26,9 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["unit", "decision", "source_quote"],
+        "required": ["path", "unit", "decision", "source_quote"],
         "properties": {
+          "path": { "type": "string", "maxLength": 300 },
           "unit": { "type": "string", "maxLength": 200 },
           "decision": { "type": "string", "enum": ["confirmed", "rejected"] },
           "source_quote": { "type": "string", "maxLength": 1000 }
