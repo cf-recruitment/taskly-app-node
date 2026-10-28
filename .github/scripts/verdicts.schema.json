@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "units"],
+  "properties": {
+    "summary": { "type": "string", "maxLength": 3000 },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "unit", "verdict", "expectations", "tests", "attempts"],
+        "properties": {
+          "path": { "type": "string", "maxLength": 300 },
+          "unit": { "type": "string", "maxLength": 200 },
+          "verdict": { "type": "string", "enum": ["added", "amended", "not-needed", "flagged-defect"] },
+          "reason": {
+            "type": "string",
+            "enum": ["already-covered", "no-logic", "trivial", "not-unit-testable", "unreachable"]
+          },
+          "kind": { "type": "string", "enum": ["intent", "characterization"] },
+          "expectations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "source"],
+              "properties": {
+                "text": { "type": "string", "maxLength": 500 },
+                "source": { "type": "string", "maxLength": 300 }
+              }
+            }
+          },
+          "tests": { "type": "array", "items": { "type": "string", "maxLength": 300 } },
+          "attempts": { "type": "integer" },
+          "defect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["test", "expected", "received", "source"],
+            "properties": {
+              "test": { "type": "string", "maxLength": 300 },
+              "expected": { "type": "string", "maxLength": 500 },
+              "received": { "type": "string", "maxLength": 500 },
+              "source": { "type": "string", "maxLength": 300 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

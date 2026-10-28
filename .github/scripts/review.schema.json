@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "findings", "defects"],
+  "properties": {
+    "summary": { "type": "string", "maxLength": 3000 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["test", "severity", "reason", "note"],
+        "properties": {
+          "test": { "type": "string", "maxLength": 300 },
+          "severity": { "type": "string", "enum": ["blocking", "advisory"] },
+          "reason": {
+            "type": "string",
+            "enum": ["tautology", "unsupported-expectation", "tests-implementation", "flaky", "out-of-scope"]
+          },
+          "note": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+    "defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["unit", "decision", "source_quote"],
+        "properties": {
+          "unit": { "type": "string", "maxLength": 200 },
+          "decision": { "type": "string", "enum": ["confirmed", "rejected"] },
+          "source_quote": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    }
+  }
+}
