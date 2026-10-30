@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Skill",
+      "Edit(/backend/tests/**/*.test.ts)",
+      "Edit(/backend/tests/fixture.ts)",
+      "Edit(/frontend/src/**/*.test.ts)",
+      "Edit(/frontend/src/**/*.test.tsx)",
+      "Edit(/frontend/src/test/todoFixture.ts)",
+      "Edit(/.test-agent/report.md)",
+      "Bash(node .claude/skills/analyze-pr-changes/scripts/changed-sources.mjs *)",
+      "Bash(node .claude/skills/run-unit-tests/scripts/run-tests.mjs *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git checkout -- *)",
+      "Bash(rm backend/tests/*.test.ts)",
+      "Bash(rm frontend/src/*.test.ts)",
+      "Bash(rm frontend/src/*.test.tsx)"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git push *)",
+      "Bash(git commit *)",
+      "Bash(npm install *)",
+      "Bash(npm i *)",
+      "Bash(npx *)"
+    ]
+  }
+}

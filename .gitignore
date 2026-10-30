@@ -21,3 +21,10 @@ coverage/
 
 # macOS
 .DS_Store
+
+assignment 4.md
+# Test agent output
+.test-agent/
+
+# Local working notes (not part of the solution)
+.notes/
